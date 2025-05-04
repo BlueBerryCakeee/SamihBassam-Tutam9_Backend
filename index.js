@@ -15,39 +15,46 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Root route handler
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Task By Samih API is running',
+    endpoints: {
+      todos: '/api/todos',
+      auth: '/api/auth'
+    } 
+  });
+});
+
 // Routes
 app.use('/api/todos', todoRoutes);
 app.use('/api/auth', authRoutes);
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('Connected to MongoDB');
-    // Log connection string with hidden password for debugging
-    console.log('Database connection string:', 
-      process.env.MONGODB_URI ? process.env.MONGODB_URI.replace(/:[^:]*@/, ':******@') : 'No connection string provided');
-  })
-  .catch((error) => console.error('MongoDB connection error:', error));
+// Configure mongoose to handle connection issues
+mongoose.connect(process.env.MONGODB_URI, {
+  // These options help with connection issues
+  serverSelectionTimeoutMS: 5000,
+  // Auto reconnect if connection is lost
+  autoReconnect: true,
+  // Use the new URL parser
+  useNewUrlParser: true,
+  // Use the unified topology
+  useUnifiedTopology: true
+})
+.then(() => {
+  console.log('Connected to MongoDB Atlas');
+})
+.catch((error) => {
+  console.error('MongoDB connection error:', error.message);
+  // Don't stop the server if DB connection fails
+  console.log('API will continue to run without database functionality');
+});
 
-// Start server - Modified to be deployment-friendly
+// Handle server startup based on environment
+// Start server for local development
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// Handle server errors properly
-server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Choose a different port.`);
-    process.exit(1);
-  } else {
-    console.error('Server error:', e);
-  }
-});
-
-// For graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
+// Export for serverless
+export default app;
