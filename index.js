@@ -29,7 +29,25 @@ mongoose.connect(process.env.MONGODB_URI)
   })
   .catch((error) => console.error('MongoDB connection error:', error));
 
-// Start server
-app.listen(PORT, () => {
+// Start server - Modified to be deployment-friendly
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+// Handle server errors properly
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Choose a different port.`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', e);
+  }
+});
+
+// For graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+  });
 });
