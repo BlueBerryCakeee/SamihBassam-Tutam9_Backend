@@ -9,10 +9,13 @@ import authRoutes from './routes/authRoutes.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*', // Allow all origins for development
+  methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Root route handler
@@ -30,31 +33,58 @@ app.get('/', (req, res) => {
 app.use('/api/todos', todoRoutes);
 app.use('/api/auth', authRoutes);
 
-// Configure mongoose to handle connection issues
-mongoose.connect(process.env.MONGODB_URI, {
-  // These options help with connection issues
-  serverSelectionTimeoutMS: 5000,
-  // Auto reconnect if connection is lost
-  autoReconnect: true,
-  // Use the new URL parser
-  useNewUrlParser: true,
-  // Use the unified topology
-  useUnifiedTopology: true
-})
-.then(() => {
-  console.log('Connected to MongoDB Atlas');
-})
-.catch((error) => {
-  console.error('MongoDB connection error:', error.message);
-  // Don't stop the server if DB connection fails
-  console.log('API will continue to run without database functionality');
-});
+// MongoDB Connection
+let cachedDb = null;
 
-// Handle server startup based on environment
-// Start server for local development
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+async function connectToDatabase() {
+  if (cachedDb) {
+    console.log('Using cached database instance');
+    return cachedDb;
+  }
+  
+  try {
+    // Connection options
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000
+    };
 
-// Export for serverless
+    // Connect to database
+    const client = await mongoose.connect(process.env.MONGODB_URI, options);
+    
+    console.log('Connected to MongoDB Atlas');
+    
+    cachedDb = client;
+    return cachedDb;
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    throw error;
+  }
+}
+
+// Connect to database if not in serverless environment
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5000;
+  connectToDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch(err => {
+      console.error('Failed to connect to MongoDB', err);
+    });
+} else {
+  // In production (Vercel), we connect for each request
+  app.use(async (req, res, next) => {
+    try {
+      await connectToDatabase();
+      next();
+    } catch (error) {
+      return res.status(500).json({ message: 'Database connection failed' });
+    }
+  });
+}
+
 export default app;
